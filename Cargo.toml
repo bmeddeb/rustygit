@@ -1,0 +1,25 @@
+[package]
+name = "rustygit"
+version = "0.1.0"
+edition = "2021"
+description = "Git operations library with Python bindings"
+authors = ["ben <bmeddeb@asu.edu>"]
+repository = "https://github.com/bmeddeb/rustygit.git"
+
+[lib]
+name = "rustygit"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+git2 = "0.20.0"
+thiserror = "2.0.12"
+log = "0.4.27"
+rayon = "1.10.0"
+tokio = { version = "1.44.1", features = ["full"] }
+
+[dependencies.pyo3]
+version = "0.23.5"
+features = ["extension-module"]
+
+[build-dependencies]
+pyo3-build-config = "0.23.5"

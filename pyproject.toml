@@ -1,0 +1,23 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rustygit"
+version = "0.1.0"
+description = "High-performance Git operations for Python"
+authors = [{name = "Ben Meddeb", email = "bmeddeb@asu.edu"}]
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = [
+    "sphinx>=7.1.2",
+]
+
+[project.urls]
+Repository = "https://github.com/bmeddeb/rustygit"
+Documentation = "https://rustygit.readthedocs.io"
