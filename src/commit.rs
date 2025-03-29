@@ -1,81 +1,72 @@
-use git2;
+use crate::utils::git_err_to_py_err;
+use git2::{Commit as GitCommit, Oid, Repository};
 use pyo3::prelude::*;
 
 #[pyclass]
 pub struct Commit {
-    id: String,
-    message: Option<String>,
-    author_name: Option<String>,
-    author_email: Option<String>,
-    time: i64,
-}
+    #[pyo3(get)]
+    pub hash: String,
 
-#[pymethods]
-impl Commit {
-    #[new]
-    #[pyo3(signature = (id, message=None, author_name=None, author_email=None, time=0))]
-    fn new(
-        id: String,
-        message: Option<String>,
-        author_name: Option<String>,
-        author_email: Option<String>,
-        time: i64,
-    ) -> Self {
-        Self {
-            id,
-            message,
-            author_name,
-            author_email,
-            time,
-        }
-    }
+    #[pyo3(get)]
+    pub author: String,
+    #[pyo3(get)]
+    pub author_email: String,
+    #[pyo3(get)]
+    pub author_time: i64,
 
-    /// Get the commit ID (SHA)
-    #[getter]
-    fn id(&self) -> PyResult<String> {
-        Ok(self.id.clone())
-    }
+    #[pyo3(get)]
+    pub committer: String,
+    #[pyo3(get)]
+    pub committer_email: String,
+    #[pyo3(get)]
+    pub commit_time: i64,
 
-    /// Get the commit message
-    #[getter]
-    fn message(&self) -> PyResult<Option<String>> {
-        Ok(self.message.clone())
-    }
+    #[pyo3(get)]
+    pub message: String,
 
-    /// Get the author name
-    #[getter]
-    fn author_name(&self) -> PyResult<Option<String>> {
-        Ok(self.author_name.clone())
-    }
-
-    /// Get the author email
-    #[getter]
-    fn author_email(&self) -> PyResult<Option<String>> {
-        Ok(self.author_email.clone())
-    }
-
-    /// Get the commit time (as Unix timestamp)
-    #[getter]
-    fn time(&self) -> PyResult<i64> {
-        Ok(self.time)
-    }
+    #[pyo3(get)]
+    pub parents: Vec<String>,
 }
 
 impl Commit {
-    /// Create a Commit from a git2::Commit object (for internal Rust use only)
-    pub fn from_git_commit(commit: &git2::Commit) -> Self {
-        let id = commit.id().to_string();
-        let message = commit.message().map(|s| s.to_string());
-        let author_name = commit.author().name().map(|s| s.to_string());
-        let author_email = commit.author().email().map(|s| s.to_string());
-        let time = commit.time().seconds();
+    pub fn from_git_commit(commit: &GitCommit) -> Self {
+        Commit {
+            hash: commit.id().to_string(),
 
-        Self {
-            id,
-            message,
-            author_name,
-            author_email,
-            time,
+            author: commit.author().name().unwrap_or("").to_string(),
+            author_email: commit.author().email().unwrap_or("").to_string(),
+            author_time: commit.author().when().seconds(),
+
+            committer: commit.committer().name().unwrap_or("").to_string(),
+            committer_email: commit.committer().email().unwrap_or("").to_string(),
+            commit_time: commit.time().seconds(),
+
+            message: commit.message().unwrap_or("").to_string(),
+            parents: commit.parent_ids().map(|id| id.to_string()).collect(),
         }
     }
+}
+
+#[pyfunction]
+pub fn get_commit_history(path: &str) -> PyResult<Vec<Commit>> {
+    let repo = Repository::open(path).map_err(git_err_to_py_err)?;
+    let mut revwalk = repo.revwalk().map_err(git_err_to_py_err)?;
+    revwalk.push_head().map_err(git_err_to_py_err)?;
+
+    let mut commits = Vec::new();
+
+    for oid_result in revwalk {
+        let oid = oid_result.map_err(git_err_to_py_err)?;
+        let commit = repo.find_commit(oid).map_err(git_err_to_py_err)?;
+        commits.push(Commit::from_git_commit(&commit));
+    }
+
+    Ok(commits)
+}
+
+#[pymodule]
+pub fn commits(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_class::<Commit>()?;
+    m.add_function(wrap_pyfunction!(get_commit_history, m)?)?;
+    Ok(())
 }

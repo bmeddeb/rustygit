@@ -138,7 +138,7 @@ impl Repo {
         Ok(statuses)
     }
     #[staticmethod]
-    fn clone_multiple_async(
+    fn async_clone(
         py: Python,
         urls: Vec<String>,
         base_dir: Option<String>,

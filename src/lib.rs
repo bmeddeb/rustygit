@@ -7,15 +7,20 @@ mod commit;
 mod repo;
 mod utils;
 
-/// A Python module implemented in Rust using PyO3
 #[pymodule]
-fn rustygit(_py: Python, m: &PyModule) -> PyResult<()> {
-    // Register repository-related functionality
+fn rustygit(py: Python, m: &PyModule) -> PyResult<()> {
+    // Register Repo and Branch classes at the top level
     m.add_class::<repo::Repo>()?;
-    m.add_class::<commit::Commit>()?;
     m.add_class::<branch::Branch>()?;
+    m.add_class::<commit::Commit>()?;
 
-    // Add other module functions and classes as we go
+    // Add top-level functions
+    m.add_function(wrap_pyfunction!(commit::get_commit_history, m)?)?;
+
+    // `commit` submodule (for backward compatibility)
+    let commit = PyModule::new(py, "commits")?;
+    commit::commits(py, commit)?; // calls #[pymodule] fn commits()
+    m.add_submodule(commit)?;
 
     Ok(())
 }
