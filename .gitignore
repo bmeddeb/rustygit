@@ -93,3 +93,7 @@ out/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# App specific
+async_clones/
+tests/

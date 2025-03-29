@@ -1,7 +1,9 @@
-use super::model::{Commit, DiffEntry};
+use super::model::{BlameLine, Commit, DiffEntry};
 use crate::utils::git_err_to_py_err;
-use git2::{DiffOptions, Repository};
+use git2::{BlameOptions, DiffOptions, Repository};
 use pyo3::prelude::*;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
 #[pyfunction]
 pub fn get_commit_history(path: &str) -> PyResult<Vec<Commit>> {
@@ -81,4 +83,62 @@ pub fn get_file_change_summary(
     .map_err(git_err_to_py_err)?;
 
     Ok(results)
+}
+#[pyfunction]
+pub fn get_file_blame(file_path: &str) -> PyResult<Vec<BlameLine>> {
+    // Canonicalize the path (absolute path to file)
+    let abs_path = std::fs::canonicalize(file_path)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("{}", e)))?;
+
+    // Discover the repository from the file's path
+    let repo = Repository::discover(&abs_path).map_err(git_err_to_py_err)?;
+
+    // Get the relative path from repo root
+    let rel_path = abs_path
+        .strip_prefix(repo.path().parent().unwrap())
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to get relative path: {}",
+                e
+            ))
+        })?;
+
+    // Prepare blame options
+    let mut options = BlameOptions::new();
+    let blame = repo
+        .blame_file(rel_path, Some(&mut options))
+        .map_err(git_err_to_py_err)?;
+
+    // Read file lines to preserve content
+    let file = File::open(&abs_path)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("{}", e)))?;
+    let lines = BufReader::new(file)
+        .lines()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("{}", e)))?;
+
+    let mut result = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(hunk) = blame.get_line(i + 1) {
+            // Look up the commit to get the summary
+            let commit = repo
+                .find_commit(hunk.final_commit_id())
+                .map_err(git_err_to_py_err)?;
+            let summary = commit.summary().unwrap_or("").to_string();
+
+            result.push(BlameLine::new(
+                i + 1,
+                line.clone(),
+                hunk.final_commit_id().to_string(),
+                hunk.final_signature().name().unwrap_or("").to_string(),
+                hunk.final_signature().email().unwrap_or("").to_string(),
+                hunk.final_signature().when().seconds(),
+                hunk.orig_signature().name().unwrap_or("").to_string(),
+                hunk.orig_signature().when().seconds(),
+                summary,
+            ));
+        }
+    }
+
+    Ok(result)
 }

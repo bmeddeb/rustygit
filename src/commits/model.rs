@@ -58,3 +58,51 @@ impl DiffEntry {
         }
     }
 }
+
+#[pyclass]
+pub struct BlameLine {
+    #[pyo3(get)]
+    pub line_number: usize,
+    #[pyo3(get)]
+    pub content: String,
+    #[pyo3(get)]
+    pub commit_hash: String,
+    #[pyo3(get)]
+    pub author: String,
+    #[pyo3(get)]
+    pub author_email: String,
+    #[pyo3(get)]
+    pub author_time: i64,
+    #[pyo3(get)]
+    pub committer: String,
+    #[pyo3(get)]
+    pub commit_time: i64,
+    #[pyo3(get)]
+    pub summary: String,
+}
+
+impl BlameLine {
+    pub fn new(
+        line_number: usize,
+        content: String,
+        commit_hash: String,
+        author: String,
+        author_email: String,
+        author_time: i64,
+        committer: String,
+        commit_time: i64,
+        summary: String,
+    ) -> Self {
+        BlameLine {
+            line_number,
+            content,
+            commit_hash,
+            author,
+            author_email,
+            author_time,
+            committer,
+            commit_time,
+            summary,
+        }
+    }
+}
