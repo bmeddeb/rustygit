@@ -15,7 +15,7 @@ fn rustygit(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<commit::Commit>()?;
     m.add_class::<branch::Branch>()?;
 
-    // Add other module functions and classes as needed
+    // Add other module functions and classes as we go
 
     Ok(())
 }
