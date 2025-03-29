@@ -20,6 +20,7 @@ fn rustygit(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(commits::get_commit_history, m)?)?;
     m.add_function(wrap_pyfunction!(commits::get_file_change_summary, m)?)?;
     m.add_function(wrap_pyfunction!(commits::get_file_blame, m)?)?;
+    m.add_function(wrap_pyfunction!(commits::get_blame_for_files, m)?)?;
 
     // `commits` submodule (optional alternative access path)
     let commit_mod = PyModule::new(py, "commits")?;
@@ -32,6 +33,7 @@ fn rustygit(py: Python, m: &PyModule) -> PyResult<()> {
         commit_mod
     )?)?;
     commit_mod.add_function(wrap_pyfunction!(commits::get_file_blame, commit_mod)?)?;
+    commit_mod.add_function(wrap_pyfunction!(commits::get_blame_for_files, commit_mod)?)?;
     m.add_submodule(commit_mod)?;
 
     Ok(())

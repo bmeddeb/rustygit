@@ -2,6 +2,7 @@ use git2::Commit as GitCommit;
 use pyo3::prelude::*;
 
 #[pyclass]
+#[derive(Clone, Debug)]
 pub struct Commit {
     #[pyo3(get)]
     pub hash: String,
@@ -40,6 +41,7 @@ impl Commit {
 }
 
 #[pyclass]
+#[derive(Clone, Debug)]
 pub struct DiffEntry {
     #[pyo3(get)]
     pub path: String,
@@ -60,6 +62,7 @@ impl DiffEntry {
 }
 
 #[pyclass]
+#[derive(Clone, Debug)]
 pub struct BlameLine {
     #[pyo3(get)]
     pub line_number: usize,
