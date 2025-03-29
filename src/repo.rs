@@ -1,9 +1,6 @@
-use crate::commit::Commit;
 use crate::utils::git_err_to_py_err;
 use git2;
-use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
-use rayon::prelude::*;
 use std::path::Path;
 
 #[pyclass(unsendable)]
@@ -16,15 +13,12 @@ pub struct Repo {
 impl Repo {
     #[new]
     fn new(path: &str) -> PyResult<Self> {
-        let repo = match git2::Repository::open(Path::new(path)) {
-            Ok(repo) => repo,
-            Err(e) => {
-                return Err(PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                    "Failed to open repository: {}",
-                    e
-                )))
-            }
-        };
+        let repo = git2::Repository::open(Path::new(path)).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                "Failed to open repository: {}",
+                e
+            ))
+        })?;
 
         Ok(Repo {
             inner: repo,
@@ -32,18 +26,14 @@ impl Repo {
         })
     }
 
-    /// Initialize a new git repository at the given path
     #[staticmethod]
     fn init(path: &str) -> PyResult<Self> {
-        let repo = match git2::Repository::init(Path::new(path)) {
-            Ok(repo) => repo,
-            Err(e) => {
-                return Err(PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                    "Failed to initialize repository: {}",
-                    e
-                )))
-            }
-        };
+        let repo = git2::Repository::init(Path::new(path)).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                "Failed to initialize repository: {}",
+                e
+            ))
+        })?;
 
         Ok(Repo {
             inner: repo,
@@ -51,56 +41,41 @@ impl Repo {
         })
     }
 
-    /// Clone a repository from a URL
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - The URL of the Git repository to clone
-    /// * `path` - Optional path where the repository should be cloned.
-    ///            If not provided, it will use the repository name in the current directory.
-    ///
-    /// # Returns
-    ///
-    /// A new `Repo` instance pointing to the cloned repository.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the cloning operation fails.
     #[staticmethod]
-    #[pyo3(text_signature = "(url, path=None, /)")]
-    fn clone(url: &str, path: Option<&str>) -> PyResult<Self> {
-        // Determine the clone path
-        let target_path = match path {
-            Some(p) => p.to_string(),
-            None => {
-                // Extract repository name from URL and use it in the current directory
-                let url_parts: Vec<&str> = url.split('/').collect();
-                let repo_name = url_parts
+    #[pyo3(text_signature = "(url, path=None, username=None, token=None, /)")]
+    fn clone(
+        url: &str,
+        path: Option<&str>,
+        username: Option<&str>,
+        token: Option<&str>,
+    ) -> PyResult<Self> {
+        let target_path = path.map_or_else(
+            || {
+                url.split('/')
                     .last()
-                    .map(|name| {
-                        if name.ends_with(".git") {
-                            name[..name.len() - 4].to_string()
-                        } else {
-                            name.to_string()
-                        }
-                    })
-                    .unwrap_or_else(|| "repo".to_string());
+                    .map(|name| name.trim_end_matches(".git").to_string())
+                    .unwrap_or_else(|| "repo".to_string())
+            },
+            String::from,
+        );
 
-                // Use current directory + repo name
-                format!("./{}", repo_name)
-            }
-        };
+        let mut callbacks = git2::RemoteCallbacks::new();
+        if let (Some(user), Some(tok)) = (username, token) {
+            callbacks.credentials(move |_, _, _| git2::Cred::userpass_plaintext(user, tok));
+        }
 
-        // Clone the repository
-        let repo = match git2::Repository::clone(url, Path::new(&target_path)) {
-            Ok(repo) => repo,
-            Err(e) => {
-                return Err(PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+        let mut fetch_options = git2::FetchOptions::new();
+        fetch_options.remote_callbacks(callbacks);
+
+        let repo = git2::build::RepoBuilder::new()
+            .fetch_options(fetch_options)
+            .clone(url, Path::new(&target_path))
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
                     "Failed to clone repository: {}",
                     e
-                )))
-            }
-        };
+                ))
+            })?;
 
         Ok(Repo {
             inner: repo,
@@ -108,98 +83,63 @@ impl Repo {
         })
     }
 
-    /// Get the repository path
     #[getter]
     fn path(&self) -> PyResult<String> {
         Ok(self.path.clone())
     }
 
-    /// Check if the repository is bare
     fn is_bare(&self) -> bool {
         self.inner.is_bare()
     }
 
-    /// Find all commits that modify specified files, in parallel using thread-safe methods
-    fn find_commits_modifying_files(&self, files: Vec<String>) -> PyResult<Vec<Commit>> {
-        // Clone the path for thread safety
-        let repo_path = self.inner.path().to_path_buf();
-
-        // Create a revwalk to iterate through commits
-        let mut revwalk = self.inner.revwalk().map_err(|e| git_err_to_py_err(e))?;
-
-        // Configure revwalk to start from HEAD and traverse all commits
-        revwalk.push_head().map_err(|e| git_err_to_py_err(e))?;
-
-        // Collect all commit OIDs
-        let oids: Vec<git2::Oid> = revwalk
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| git_err_to_py_err(e))?;
-
-        // Process commits in parallel using Rayon
-        let results: Vec<Result<Option<Commit>, PyErr>> = oids
-            .par_iter()
-            .map(|oid| {
-                // Open a new repository instance for each thread
-                let repo = match git2::Repository::open(&repo_path) {
-                    Ok(repo) => repo,
-                    Err(e) => return Err(git_err_to_py_err(e)),
-                };
-
-                let commit = repo.find_commit(*oid).map_err(|e| git_err_to_py_err(e))?;
-
-                // If this is not the first commit, get parent to diff against
-                if commit.parent_count() > 0 {
-                    let parent = commit.parent(0).map_err(|e| git_err_to_py_err(e))?;
-
-                    let parent_tree = parent.tree().map_err(|e| git_err_to_py_err(e))?;
-
-                    let commit_tree = commit.tree().map_err(|e| git_err_to_py_err(e))?;
-
-                    let diff = repo
-                        .diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), None)
-                        .map_err(|e| git_err_to_py_err(e))?;
-
-                    // Check if diff modifies any of the specified files
-                    let mut modified_target_file = false;
-
-                    // Updated foreach usage according to git2 0.20.x
-                    diff.foreach(
-                        &mut |delta: git2::DiffDelta, _| {
-                            if let Some(path) = delta.new_file().path() {
-                                if let Some(path_str) = path.to_str() {
-                                    if files.iter().any(|f| path_str.contains(f)) {
-                                        modified_target_file = true;
-                                        return false; // Stop iteration
-                                    }
-                                }
-                            }
-                            true
-                        },
-                        None,
-                        None,
-                        None,
-                    )
-                    .map_err(|e| git_err_to_py_err(e))?;
-
-                    if modified_target_file {
-                        // Create a Commit object using our from_git_commit method
-                        return Ok(Some(Commit::from_git_commit(&commit)));
-                    }
-                }
-
-                Ok(None)
-            })
-            .collect();
-
-        // Filter out None values and handle errors
-        let mut commits = Vec::new();
-        for result in results {
-            match result? {
-                Some(commit) => commits.push(commit),
-                None => continue,
-            }
+    fn fetch_updates(
+        &self,
+        remote_name: Option<&str>,
+        branch: Option<&str>,
+        username: Option<&str>,
+        token: Option<&str>,
+    ) -> PyResult<()> {
+        let mut callbacks = git2::RemoteCallbacks::new();
+        if let (Some(user), Some(tok)) = (username, token) {
+            callbacks.credentials(move |_, _, _| git2::Cred::userpass_plaintext(user, tok));
         }
 
-        Ok(commits)
+        let mut fetch_options = git2::FetchOptions::new();
+        fetch_options.remote_callbacks(callbacks);
+
+        let mut remote = self
+            .inner
+            .find_remote(remote_name.unwrap_or("origin"))
+            .map_err(git_err_to_py_err)?;
+
+        remote
+            .fetch(&[branch.unwrap_or("main")], Some(&mut fetch_options), None)
+            .map_err(git_err_to_py_err)?;
+
+        Ok(())
+    }
+
+    fn list_remotes(&self) -> PyResult<Vec<String>> {
+        let remotes = self
+            .inner
+            .remotes()
+            .map_err(git_err_to_py_err)?
+            .iter()
+            .filter_map(|name| name.map(String::from))
+            .collect();
+
+        Ok(remotes)
+    }
+
+    fn status(&self) -> PyResult<Vec<String>> {
+        let statuses = self
+            .inner
+            .statuses(None)
+            .map_err(git_err_to_py_err)?
+            .iter()
+            .filter_map(|entry| entry.path().map(String::from))
+            .collect();
+
+        Ok(statuses)
     }
 }
