@@ -1,7 +1,10 @@
 use crate::utils::git_err_to_py_err;
+use futures::future;
 use git2;
 use pyo3::prelude::*;
+use pyo3_asyncio::tokio as pyo3_tokio;
 use std::path::Path;
+use tokio::task;
 
 #[pyclass(unsendable)]
 pub struct Repo {
@@ -42,7 +45,7 @@ impl Repo {
     }
 
     #[staticmethod]
-    #[pyo3(text_signature = "(url, path=None, username=None, token=None, /)")]
+    #[pyo3(signature = (url, path=None, username=None, token=None))]
     fn clone(
         url: &str,
         path: Option<&str>,
@@ -50,12 +53,7 @@ impl Repo {
         token: Option<&str>,
     ) -> PyResult<Self> {
         let target_path = path.map_or_else(
-            || {
-                url.split('/')
-                    .last()
-                    .map(|name| name.trim_end_matches(".git").to_string())
-                    .unwrap_or_else(|| "repo".to_string())
-            },
+            || url.split('/').last().unwrap().replace(".git", ""),
             String::from,
         );
 
@@ -71,10 +69,7 @@ impl Repo {
             .fetch_options(fetch_options)
             .clone(url, Path::new(&target_path))
             .map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
-                    "Failed to clone repository: {}",
-                    e
-                ))
+                PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Clone failed: {}", e))
             })?;
 
         Ok(Repo {
@@ -141,5 +136,54 @@ impl Repo {
             .collect();
 
         Ok(statuses)
+    }
+    #[staticmethod]
+    fn clone_multiple_async(
+        py: Python,
+        urls: Vec<String>,
+        base_dir: Option<String>,
+        username: Option<String>,
+        token: Option<String>,
+    ) -> PyResult<&PyAny> {
+        pyo3_tokio::future_into_py(py, async move {
+            let base_dir = base_dir.unwrap_or_else(|| ".".to_string());
+
+            let tasks = urls.into_iter().map(|url| {
+                let username = username.clone();
+                let token = token.clone();
+                let target_path = format!(
+                    "{}/{}",
+                    base_dir,
+                    url.split('/').last().unwrap().replace(".git", "")
+                );
+
+                task::spawn_blocking(move || {
+                    let mut callbacks = git2::RemoteCallbacks::new();
+                    if let (Some(user), Some(tok)) = (username, token) {
+                        callbacks.credentials(move |_, _, _| {
+                            git2::Cred::userpass_plaintext(&user, &tok)
+                        });
+                    }
+
+                    let mut fetch_options = git2::FetchOptions::new();
+                    fetch_options.remote_callbacks(callbacks);
+
+                    git2::build::RepoBuilder::new()
+                        .fetch_options(fetch_options)
+                        .clone(&url, Path::new(&target_path))
+                        .map(|_| target_path)
+                        .map_err(|e| format!("Failed to clone {}: {}", url, e))
+                })
+            });
+
+            let results = future::join_all(tasks).await;
+
+            let cloned_paths: Vec<String> = results
+                .into_iter()
+                .filter_map(|res| res.ok().and_then(|inner| inner.ok()))
+                .collect();
+
+            Ok(cloned_paths)
+        })
     }
 }
