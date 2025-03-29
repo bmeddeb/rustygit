@@ -472,7 +472,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+<<<<<<< HEAD
     { name = "maturin" },
+=======
+    { name = "maturin", specifier = ">=1.8.3" },
+>>>>>>> 889a054 (maturin deoendency)
     { name = "sphinx", specifier = ">=7.1.2" },
 ]
 

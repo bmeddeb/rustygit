@@ -15,7 +15,7 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 dependencies = [
-    "maturin",
+    "maturin>=1.8.3",
     "sphinx>=7.1.2",
 ]
 
