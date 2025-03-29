@@ -3,24 +3,32 @@
 use pyo3::prelude::*;
 
 mod branch;
-mod commit;
+mod commits;
 mod repo;
 mod utils;
 
 #[pymodule]
 fn rustygit(py: Python, m: &PyModule) -> PyResult<()> {
-    // Register Repo and Branch classes at the top level
+    // Register top-level classes
     m.add_class::<repo::Repo>()?;
     m.add_class::<branch::Branch>()?;
-    m.add_class::<commit::Commit>()?;
+    m.add_class::<commits::Commit>()?;
+    m.add_class::<commits::DiffEntry>()?;
 
     // Add top-level functions
-    m.add_function(wrap_pyfunction!(commit::get_commit_history, m)?)?;
+    m.add_function(wrap_pyfunction!(commits::get_commit_history, m)?)?;
+    m.add_function(wrap_pyfunction!(commits::get_file_change_summary, m)?)?;
 
-    // `commit` submodule (for backward compatibility)
-    let commit = PyModule::new(py, "commits")?;
-    commit::commits(py, commit)?; // calls #[pymodule] fn commits()
-    m.add_submodule(commit)?;
+    // `commits` submodule (optional alternative access path)
+    let commit_mod = PyModule::new(py, "commits")?;
+    commit_mod.add_class::<commits::Commit>()?;
+    commit_mod.add_class::<commits::DiffEntry>()?;
+    commit_mod.add_function(wrap_pyfunction!(commits::get_commit_history, commit_mod)?)?;
+    commit_mod.add_function(wrap_pyfunction!(
+        commits::get_file_change_summary,
+        commit_mod
+    )?)?;
+    m.add_submodule(commit_mod)?;
 
     Ok(())
 }
