@@ -96,8 +96,7 @@ pub fn get_file_blame(file_path: &str) -> PyResult<Vec<BlameLine>> {
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("{}", e)))?;
     let repo = Repository::discover(&abs_path).map_err(git_err_to_py_err)?;
 
-    let rel_path = abs_path
-        .strip_prefix(repo.path().parent().unwrap())
+    let rel_path = get_repository_relative_path(&abs_path, &repo)
         .map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                 "Failed to get relative path: {}",
@@ -107,7 +106,7 @@ pub fn get_file_blame(file_path: &str) -> PyResult<Vec<BlameLine>> {
 
     let mut options = BlameOptions::new();
     let blame = repo
-        .blame_file(rel_path, Some(&mut options))
+        .blame_file(&rel_path, Some(&mut options))
         .map_err(git_err_to_py_err)?;
 
     let file = File::open(&abs_path)
@@ -183,19 +182,13 @@ fn process_file_blame(file_path: &str) -> Result<Vec<BlameLine>, String> {
     let repo = Repository::discover(&abs_path)
         .map_err(|e| format!("Failed to discover repository: {}", e))?;
 
-    let repo_parent = repo
-        .path()
-        .parent()
-        .ok_or_else(|| "Repository parent path not found".to_string())?;
-
-    let rel_path = abs_path
-        .strip_prefix(repo_parent)
+    let rel_path = get_repository_relative_path(&abs_path, &repo)
         .map_err(|e| format!("Failed to get relative path: {}", e))?;
 
     let mut options = BlameOptions::new();
 
     let blame = repo
-        .blame_file(rel_path, Some(&mut options))
+        .blame_file(&rel_path, Some(&mut options))
         .map_err(|e| format!("Failed to blame file: {}", e))?;
 
     let file = File::open(&abs_path).map_err(|e| format!("Failed to open file: {}", e))?;
@@ -229,4 +222,63 @@ fn process_file_blame(file_path: &str) -> Result<Vec<BlameLine>, String> {
     }
 
     Ok(entries)
+}
+
+fn get_repository_relative_path(abs_path: &std::path::Path, repo: &Repository) -> Result<std::path::PathBuf, String> {
+    let workdir = repo.workdir()
+        .ok_or_else(|| "Repository work directory not found (bare repository?)".to_string())?;
+    
+    // Try to get the path relative to the workdir using a different approach
+    let repo_path_buf = workdir.to_path_buf();
+    
+    // Normalize paths - remove any Windows UNC prefixes
+    let mut abs_path_str = abs_path.to_string_lossy().to_string();
+    if abs_path_str.starts_with("//?/") || abs_path_str.starts_with("\\\\?\\") {
+        abs_path_str = abs_path_str.replace("//?/", "").replace("\\\\?\\", "");
+    }
+    
+    // Create normalized strings
+    let abs_path_str_norm = abs_path_str.replace('\\', "/");
+    let workdir_str_norm = repo_path_buf.to_string_lossy().to_string().replace('\\', "/");
+    
+    // Split into components
+    let abs_components: Vec<String> = abs_path_str_norm
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+        
+    let workdir_components: Vec<String> = workdir_str_norm
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    
+    // Find where the paths diverge (ignoring case on Windows)
+    let mut common_prefix_len = 0;
+    for (a, b) in abs_components.iter().zip(workdir_components.iter()) {
+        #[cfg(windows)]
+        let components_match = a.to_lowercase() == b.to_lowercase();
+        #[cfg(not(windows))]
+        let components_match = a == b;
+        
+        if components_match {
+            common_prefix_len += 1;
+        } else {
+            break;
+        }
+    }
+    
+    if common_prefix_len >= workdir_components.len() {
+        // Build the relative path from the remaining components
+        let rel_components = &abs_components[common_prefix_len..];
+        let rel_path = rel_components.join("/");
+        
+        Ok(std::path::PathBuf::from(rel_path))
+    } else {
+        Err(format!(
+            "File path '{}' is not within repository working directory '{}'",
+            abs_path.display(), repo_path_buf.display()
+        ))
+    }
 }
