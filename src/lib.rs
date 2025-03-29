@@ -9,9 +9,9 @@ mod utils;
 
 /// A Python module implemented in Rust using PyO3
 #[pymodule]
-fn rustygit(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn rustygit(_py: Python, m: &PyModule) -> PyResult<()> {
     // Register repository-related functionality
-    m.add_class::<repo::Repository>()?;
+    m.add_class::<repo::Repo>()?;
     m.add_class::<commit::Commit>()?;
     m.add_class::<branch::Branch>()?;
 

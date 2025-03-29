@@ -15,11 +15,10 @@ git2 = "0.20.0"
 thiserror = "2.0.12"
 log = "0.4.27"
 rayon = "1.10.0"
-tokio = { version = "1.44.1", features = ["full"] }
 
 [dependencies.pyo3]
-version = "0.23.5"
+version = "0.20.0"
 features = ["extension-module"]
 
 [build-dependencies]
-pyo3-build-config = "0.23.5"
+pyo3-build-config = "0.20.0"
