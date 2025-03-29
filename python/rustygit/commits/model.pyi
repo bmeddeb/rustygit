@@ -44,12 +44,12 @@ class Commit:
         ...
 
     @property
-    def parents(self) -> List[str]:
+    def parents(self) -> list[str]:
         """List of parent commit hashes (used for merges and history tracking)."""
         ...
 
 
-def get_commit_history(path: str) -> List[Commit]:
+def get_commit_history(path: str) -> list[Commit]:
     """
     Retrieve the complete commit history of a Git repository.
 
@@ -57,7 +57,7 @@ def get_commit_history(path: str) -> List[Commit]:
         path (str): Path to the local Git repository.
 
     Returns:
-        List[Commit]: A list of Commit objects sorted by reverse chronological order (most recent first).
+        list[Commit]: A list of Commit objects sorted by reverse chronological order (most recent first).
 
     Raises:
         IOError: If the repository cannot be opened or if reading commits fails.
@@ -86,7 +86,7 @@ class DiffEntry:
         ...
 
 
-def get_file_change_summary(path: str, commit1: str, commit2: str) -> List[DiffEntry]:
+def get_file_change_summary(path: str, commit1: str, commit2: str) -> list[DiffEntry]:
     """
     Compare two commits and return a summary of file-level changes (line additions and deletions).
 
@@ -96,7 +96,7 @@ def get_file_change_summary(path: str, commit1: str, commit2: str) -> List[DiffE
         commit2 (str): SHA of the target commit (newer).
 
     Returns:
-        List[DiffEntry]: A list of file summaries showing added/deleted line counts per file.
+        list[DiffEntry]: A list of file summaries showing added/deleted line counts per file.
 
     Raises:
         IOError: If the repository path is invalid or commits cannot be found.
@@ -157,7 +157,7 @@ class BlameLine:
         ...
 
 
-def get_file_blame(file_path: str) -> List[BlameLine]:
+def get_file_blame(file_path: str) -> list[BlameLine]:
     """
     Retrieve blame information for each line in a file tracked by Git.
 
@@ -165,7 +165,7 @@ def get_file_blame(file_path: str) -> List[BlameLine]:
         file_path (str): The path to the file (absolute, relative, or just the filename in the current directory).
 
     Returns:
-        List[BlameLine]: A list of BlameLine objects with detailed commit attribution.
+        list[BlameLine]: A list of BlameLine objects with detailed commit attribution.
 
     Raises:
         IOError: If the file is not readable or not part of a Git repository.
@@ -174,7 +174,7 @@ def get_file_blame(file_path: str) -> List[BlameLine]:
     ...
 
 
-def get_blame_for_files(file_paths: List[str]) -> Dict[str, List[BlameLine]]:
+def get_blame_for_files(file_paths: list[str]) -> dict[str, list[BlameLine]]:
     """
     Perform parallel blame analysis on multiple files.
 
@@ -183,10 +183,10 @@ def get_blame_for_files(file_paths: List[str]) -> Dict[str, List[BlameLine]]:
     and the value is a list of BlameLine objects representing per-line attribution.
 
     Parameters:
-        file_paths (List[str]): A list of file paths (absolute or relative) to analyze.
+        file_paths (list[str]): A list of file paths (absolute or relative) to analyze.
 
     Returns:
-        Dict[str, List[BlameLine]]: A mapping from file paths to lists of BlameLine objects,
+        dict[str, list[BlameLine]]: A mapping from file paths to lists of BlameLine objects,
         each containing line-level commit attribution data.
 
     Raises:
